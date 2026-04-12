@@ -1,7 +1,9 @@
+require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-require("dotenv").config();
+
+const connectDB = require("./config/db");
 
 const app = express();
 
@@ -20,12 +22,16 @@ const donationRoutes = require("./routes/donationRoutes");
 // USE ROUTES (IMPORTANT - must be string, not number)
 app.use("/donations", donationRoutes);
 
-// DATABASE CONNECTION
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Connected"))
-  .catch(err => console.log(err));
+// CONNECT TO DATABASE AND START SERVER
+const PORT = process.env.PORT || 5000;
 
-// START SERVER
-app.listen(5000, () => {
-  console.log("Server running on port 5000");
-});
+connectDB()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  });
