@@ -1,29 +1,39 @@
-require("dotenv").config();
+require("dotenv").config({ path: __dirname + "/.env", quiet: true });
+
+const dns = require("dns");
 const express = require("express");
-const mongoose = require("mongoose");
 const cors = require("cors");
 
 const connectDB = require("./config/db");
+const donationRoutes = require("./routes/donationRoutes");
+const userRoutes = require("./routes/userRoutes");
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
-// middleware
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
+
 app.use(cors());
 app.use(express.json());
 
-// TEST ROUTE (to check server)
 app.get("/", (req, res) => {
-  res.send("Server is working");
+  res.json({
+    status: "ok",
+    message: "Food Rescue API is running"
+  });
 });
 
-// IMPORT ROUTES
-const donationRoutes = require("./routes/donationRoutes");
-
-// USE ROUTES (IMPORTANT - must be string, not number)
 app.use("/donations", donationRoutes);
+app.use("/users", userRoutes);
 
-// CONNECT TO DATABASE AND START SERVER
-const PORT = process.env.PORT || 5000;
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ message: "Something went wrong" });
+});
 
 connectDB()
   .then(() => {
@@ -31,7 +41,7 @@ connectDB()
       console.log(`Server running on port ${PORT}`);
     });
   })
-  .catch(err => {
-    console.error("Failed to start server:", err);
+  .catch((err) => {
+    console.error("Failed to start server:", err.message);
     process.exit(1);
   });
