@@ -98,7 +98,7 @@ function App() {
   }, [currentUser]);
 
   useEffect(() => {
-    if (['dashboard', 'donations', 'my-donations'].includes(page)) {
+    if (['dashboard', 'donations', 'my-donations', 'my-pickups'].includes(page)) {
       fetchDonations();
     }
   }, [page]);
@@ -120,11 +120,15 @@ function App() {
     return donations.filter((donation) => {
       const searchText = `${donation.foodType} ${donation.location} ${donation.name}`.toLowerCase();
       const matchesSearch = searchText.includes(searchTerm.toLowerCase());
-      const matchesStatus = statusFilter === 'all' || donation.status === statusFilter;
+      const pickupRole = currentUser?.role === 'ngo' || currentUser?.role === 'volunteer';
+      const visibleStatus = pickupRole
+        ? donation.status === 'available'
+        : donation.status !== 'delivered';
+      const matchesStatus = pickupRole || statusFilter === 'all' || donation.status === statusFilter;
 
-      return matchesSearch && matchesStatus;
+      return matchesSearch && visibleStatus && matchesStatus;
     });
-  }, [donations, searchTerm, statusFilter]);
+  }, [currentUser, donations, searchTerm, statusFilter]);
 
   const myDonations = useMemo(() => {
     if (!currentUser) {
@@ -146,6 +150,21 @@ function App() {
         donorName === userName ||
         donorName.includes(userName)
       );
+    });
+  }, [currentUser, donations]);
+
+  const myPickups = useMemo(() => {
+    if (!currentUser) {
+      return [];
+    }
+
+    const userEmail = currentUser.email.trim().toLowerCase();
+
+    return donations.filter((donation) => {
+      const reservedById = donation.reservedById?.trim() || '';
+      const reservedByEmail = donation.reservedByEmail?.trim().toLowerCase() || '';
+
+      return reservedById === currentUser.id || reservedByEmail === userEmail;
     });
   }, [currentUser, donations]);
 
@@ -250,7 +269,19 @@ function App() {
 
     try {
       const response = await fetch(`${API_URL}/donations/accept/${id}`, {
-        method: 'PUT'
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          reservedBy: currentUser
+            ? {
+                id: currentUser.id,
+                name: currentUser.name,
+                email: currentUser.email
+              }
+            : null
+        })
       });
       const data = await response.json();
 
@@ -356,6 +387,7 @@ function App() {
         <DashboardPage
           currentUser={currentUser}
           myDonations={myDonations}
+          myPickups={myPickups}
           onNavigate={navigate}
           stats={stats}
         />
@@ -395,6 +427,7 @@ function App() {
           searchTerm={searchTerm}
           stats={stats}
           statusFilter={statusFilter}
+          currentUser={currentUser}
           success={success}
           onAccept={handleAccept}
           onChange={handleDonationInput}
@@ -410,6 +443,18 @@ function App() {
         <MyDonationsPage
           currentUser={currentUser}
           donations={myDonations}
+          error={error}
+          loading={loading}
+          onComplete={handleComplete}
+          onNavigate={navigate}
+          onRefresh={fetchDonations}
+        />
+      )}
+
+      {page === 'my-pickups' && (
+        <MyPickupsPage
+          currentUser={currentUser}
+          donations={myPickups}
           error={error}
           loading={loading}
           onComplete={handleComplete}
@@ -434,6 +479,8 @@ function App() {
 }
 
 function AppNav({ currentUser, onLogout, onNavigate, page }) {
+  const pickupRole = currentUser?.role === 'ngo' || currentUser?.role === 'volunteer';
+
   return (
     <header className="site-header">
       <nav className="topbar" aria-label="Primary navigation">
@@ -473,6 +520,15 @@ function AppNav({ currentUser, onLogout, onNavigate, page }) {
               >
                 My Donations
               </button>
+              {pickupRole && (
+                <button
+                  className={page === 'my-pickups' ? 'nav-link active' : 'nav-link'}
+                  type="button"
+                  onClick={() => onNavigate('my-pickups')}
+                >
+                  My Pickups
+                </button>
+              )}
               <button
                 className={page === 'profile' ? 'nav-link active' : 'nav-link'}
                 type="button"
@@ -653,7 +709,7 @@ function AuthPage({ authForm, authLoading, error, mode, onChange, onNavigate, on
   );
 }
 
-function DashboardPage({ currentUser, myDonations, onNavigate, stats }) {
+function DashboardPage({ currentUser, myDonations, myPickups, onNavigate, stats }) {
   if (!currentUser) {
     return (
       <AuthRequiredPage
@@ -663,7 +719,9 @@ function DashboardPage({ currentUser, myDonations, onNavigate, stats }) {
     );
   }
 
+  const pickupRole = currentUser.role === 'ngo' || currentUser.role === 'volunteer';
   const deliveredMine = myDonations.filter((donation) => donation.status === 'delivered').length;
+  const deliveredPickups = myPickups.filter((donation) => donation.status === 'delivered').length;
 
   return (
     <main className="dashboard-page">
@@ -689,14 +747,22 @@ function DashboardPage({ currentUser, myDonations, onNavigate, stats }) {
           <p>Food already claimed by a pickup team.</p>
         </article>
         <article className="stat-card">
-          <span>{myDonations.length}</span>
-          <h2>My posts</h2>
-          <p>Donations connected to your account email or name.</p>
+          <span>{pickupRole ? myPickups.length : myDonations.length}</span>
+          <h2>{pickupRole ? 'My pickups' : 'My posts'}</h2>
+          <p>
+            {pickupRole
+              ? 'Food reservations claimed by your pickup team.'
+              : 'Donations connected to your account email or name.'}
+          </p>
         </article>
         <article className="stat-card">
-          <span>{deliveredMine}</span>
-          <h2>My delivered posts</h2>
-          <p>Your donations already picked up and completed.</p>
+          <span>{pickupRole ? deliveredPickups : deliveredMine}</span>
+          <h2>{pickupRole ? 'Delivered to us' : 'My delivered posts'}</h2>
+          <p>
+            {pickupRole
+              ? 'Reserved food marked as successfully delivered.'
+              : 'Your donations already picked up and completed.'}
+          </p>
         </article>
       </section>
 
@@ -707,11 +773,16 @@ function DashboardPage({ currentUser, myDonations, onNavigate, stats }) {
         </div>
         <div className="action-row">
           <button className="secondary-button" type="button" onClick={() => onNavigate('donations')}>
-            Add donation
+            {pickupRole ? 'Find food' : 'Add donation'}
           </button>
           <button className="ghost-button" type="button" onClick={() => onNavigate('my-donations')}>
             Review my donations
           </button>
+          {pickupRole && (
+            <button className="ghost-button" type="button" onClick={() => onNavigate('my-pickups')}>
+              Track my pickups
+            </button>
+          )}
           <button className="ghost-button" type="button" onClick={() => onNavigate('profile')}>
             Update profile
           </button>
@@ -768,6 +839,89 @@ function MyDonationsPage({ currentUser, donations, error, loading, onComplete, o
                 donation={donation}
                 key={donation._id}
                 onComplete={onComplete}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function MyPickupsPage({ currentUser, donations, error, loading, onComplete, onNavigate, onRefresh }) {
+  if (!currentUser) {
+    return (
+      <AuthRequiredPage
+        onNavigate={onNavigate}
+        title="Login to track your pickups"
+      />
+    );
+  }
+
+  const pickupRole = currentUser.role === 'ngo' || currentUser.role === 'volunteer';
+
+  if (!pickupRole) {
+    return (
+      <AuthRequiredPage
+        onNavigate={onNavigate}
+        title="Pickup tracking is for NGOs and volunteers"
+      />
+    );
+  }
+
+  const reserved = donations.filter((donation) => donation.status === 'accepted').length;
+  const delivered = donations.filter((donation) => donation.status === 'delivered').length;
+
+  return (
+    <main className="donations-page">
+      <section className="page-title">
+        <div>
+          <p className="eyebrow">My pickups</p>
+          <h1>Food reserved for your team</h1>
+        </div>
+        <div className="compact-stats" aria-label="Pickup summary">
+          <span>{reserved} reserved</span>
+          <span>{delivered} delivered</span>
+          <span>{donations.length} total</span>
+        </div>
+      </section>
+
+      <section className="board-panel solo-panel">
+        <div className="section-heading board-heading">
+          <div>
+            <p className="eyebrow">Pickup history</p>
+            <h2>Reserved and delivered food</h2>
+          </div>
+          <div className="action-row">
+            <button className="ghost-button" type="button" onClick={onRefresh}>
+              Refresh
+            </button>
+            <button className="primary-button" type="button" onClick={() => onNavigate('donations')}>
+              Find food
+            </button>
+          </div>
+        </div>
+
+        {error && <div className="alert alert-error">{error}</div>}
+
+        {loading ? (
+          <div className="empty-state">Loading your pickups...</div>
+        ) : donations.length === 0 ? (
+          <div className="empty-state">
+            <h3>No pickups tracked yet</h3>
+            <p>Reserve available food and it will appear here for follow-up.</p>
+            <button className="primary-button" type="button" onClick={() => onNavigate('donations')}>
+              Find available food
+            </button>
+          </div>
+        ) : (
+          <div className="donation-list">
+            {donations.map((donation) => (
+              <DonationCard
+                donation={donation}
+                key={donation._id}
+                onComplete={onComplete}
+                showPickupDetails
               />
             ))}
           </div>
@@ -863,6 +1017,7 @@ function AuthRequiredPage({ onNavigate, title }) {
 }
 
 function DonationsPage({
+  currentUser,
   donationForm,
   donations,
   error,
@@ -880,6 +1035,8 @@ function DonationsPage({
   statusFilter,
   success
 }) {
+  const pickupRole = currentUser?.role === 'ngo' || currentUser?.role === 'volunteer';
+
   return (
     <main className="donations-page">
       <section className="page-title">
@@ -989,16 +1146,21 @@ function DonationsPage({
               onChange={(event) => onSearchChange(event.target.value)}
             />
 
-            <select
-              value={statusFilter}
-              onChange={(event) => onStatusChange(event.target.value)}
-              aria-label="Filter by status"
-            >
-              <option value="all">All statuses</option>
-              <option value="available">Available</option>
-              <option value="accepted">Reserved</option>
-              <option value="delivered">Delivered</option>
-            </select>
+            {pickupRole ? (
+              <select value="available" aria-label="Filter by status" disabled>
+                <option value="available">Available only</option>
+              </select>
+            ) : (
+              <select
+                value={statusFilter}
+                onChange={(event) => onStatusChange(event.target.value)}
+                aria-label="Filter by status"
+              >
+                <option value="all">All statuses</option>
+                <option value="available">Available</option>
+                <option value="accepted">Reserved</option>
+              </select>
+            )}
           </div>
 
           {error && <div className="alert alert-error">{error}</div>}
@@ -1029,7 +1191,7 @@ function DonationsPage({
   );
 }
 
-function DonationCard({ donation, onAccept, onComplete }) {
+function DonationCard({ donation, onAccept, onComplete, showPickupDetails = false }) {
   return (
     <article className="donation-card">
       <div className="card-topline">
@@ -1061,6 +1223,30 @@ function DonationCard({ donation, onAccept, onComplete }) {
           <dt>Contact</dt>
           <dd>{donation.contact}</dd>
         </div>
+        {showPickupDetails && (
+          <>
+            <div>
+              <dt>Reserved by</dt>
+              <dd>{donation.reservedByName || 'Your team'}</dd>
+            </div>
+            <div>
+              <dt>Reserved on</dt>
+              <dd>
+                {donation.reservedAt
+                  ? new Date(donation.reservedAt).toLocaleDateString()
+                  : 'Pending'}
+              </dd>
+            </div>
+            <div>
+              <dt>Delivered on</dt>
+              <dd>
+                {donation.deliveredAt
+                  ? new Date(donation.deliveredAt).toLocaleDateString()
+                  : 'Not delivered yet'}
+              </dd>
+            </div>
+          </>
+        )}
       </dl>
 
       <div className="card-actions">

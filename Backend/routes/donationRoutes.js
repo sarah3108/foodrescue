@@ -102,9 +102,21 @@ router.get("/search/:food", async (req, res) => {
 
 router.put("/accept/:id", validateId, async (req, res) => {
   try {
+    const { reservedBy } = req.body;
+    const update = {
+      status: "accepted",
+      reservedAt: new Date()
+    };
+
+    if (reservedBy) {
+      update.reservedById = reservedBy.id;
+      update.reservedByName = reservedBy.name;
+      update.reservedByEmail = reservedBy.email;
+    }
+
     const updated = await Donation.findByIdAndUpdate(
       req.params.id,
-      { status: "accepted" },
+      update,
       { new: true, runValidators: true }
     );
 
@@ -122,7 +134,7 @@ router.delete("/complete/:id", validateId, async (req, res) => {
   try {
     const updated = await Donation.findByIdAndUpdate(
       req.params.id,
-      { status: "delivered" },
+      { status: "delivered", deliveredAt: new Date() },
       { new: true, runValidators: true }
     );
 

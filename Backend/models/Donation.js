@@ -9,6 +9,11 @@ const donationSchema = new mongoose.Schema(
     contact: { type: String, required: true, trim: true },
     donorId: { type: String, trim: true },
     donorEmail: { type: String, lowercase: true, trim: true },
+    reservedById: { type: String, trim: true },
+    reservedByName: { type: String, trim: true },
+    reservedByEmail: { type: String, lowercase: true, trim: true },
+    reservedAt: { type: Date },
+    deliveredAt: { type: Date },
     status: {
       type: String,
       enum: ["available", "accepted", "delivered"],
