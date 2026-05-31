@@ -1,0 +1,13 @@
+{
+  "name": "foodrescue-fullstack",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "start:backend": "npm --prefix Backend start",
+    "start:frontend": "npm --prefix frontend run start:frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
